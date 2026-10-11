@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "EvidenceState": {
+      "enum": [
+        "observed",
+        "inferred",
+        "correlated",
+        "causally_supported",
+        "forecast",
+        "advocated",
+        "policy_proposed",
+        "policy_adopted",
+        "implemented",
+        "documented_coordination",
+        "unverified",
+        "disputed"
+      ],
+      "title": "EvidenceState",
+      "type": "string"
+    }
+  },
+  "$id": "https://dominograph.example/schemas/1.0.0/observation.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "collector_version": {
+      "minLength": 1,
+      "title": "Collector Version",
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "evidence_state": {
+      "$ref": "#/$defs/EvidenceState"
+    },
+    "id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "metric_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Metric Id",
+      "type": "string"
+    },
+    "normalization_lineage": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Normalization Lineage",
+      "type": "array"
+    },
+    "observation_date": {
+      "format": "date",
+      "title": "Observation Date",
+      "type": "string"
+    },
+    "publication_date": {
+      "format": "date",
+      "title": "Publication Date",
+      "type": "string"
+    },
+    "raw_snapshot_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Raw Snapshot Id",
+      "type": "string"
+    },
+    "retrieval_time": {
+      "format": "date-time",
+      "title": "Retrieval Time",
+      "type": "string"
+    },
+    "revision_of": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision Of"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_url": {
+      "minLength": 1,
+      "title": "Source Url",
+      "type": "string"
+    },
+    "transformation_version": {
+      "minLength": 1,
+      "title": "Transformation Version",
+      "type": "string"
+    },
+    "validation_state": {
+      "enum": [
+        "valid",
+        "quarantined",
+        "rejected"
+      ],
+      "title": "Validation State",
+      "type": "string"
+    },
+    "value": {
+      "title": "Value",
+      "type": "number"
+    },
+    "vintage": {
+      "minLength": 1,
+      "title": "Vintage",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "metric_id",
+    "value",
+    "source_id",
+    "source_url",
+    "retrieval_time",
+    "publication_date",
+    "observation_date",
+    "vintage",
+    "collector_version",
+    "transformation_version",
+    "validation_state",
+    "raw_snapshot_id",
+    "normalization_lineage",
+    "confidence",
+    "evidence_state"
+  ],
+  "title": "Observation",
+  "type": "object"
+}

@@ -1,0 +1,1 @@
+"""Canonical versioned domain objects."""

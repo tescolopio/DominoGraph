@@ -1,0 +1,14 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - pilot-data:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/dominograph.db
+
+volumes:
+  pilot-data:

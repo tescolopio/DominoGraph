@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DominoGraph · Economic dependencies</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script defer src="/static/dashboard.js"></script>
+</head>
+<body>
+  <header>
+    <h1>DominoGraph</h1>
+    <p>Traceable economic intelligence · Memory &amp; Compute pilot</p>
+  </header>
+  <main>
+    <aside class="notice"><strong>Synthetic demonstration only.</strong> These invented observations
+      and hypotheses are not market data, investment advice, or evidence of institutional intent.
+      Arrows represent explicitly uncertain mechanisms, not proven causality.</aside>
+    <p id="status" role="status" aria-live="polite">Loading pilot…</p>
+    <label for="node">Economic domino</label>
+    <select id="node"><option value="">Select a node</option></select>
+    <section aria-labelledby="graph-title">
+      <h2 id="graph-title">Dependency graph</h2>
+      <p>Choose a node to inspect upstream and downstream links. Edge confidence is not a causal coefficient.</p>
+      <div id="graph" class="graph"></div>
+    </section>
+    <section id="details" hidden>
+      <h2 id="node-title"></h2>
+      <p id="node-description"></p>
+      <h3>Assessment dimensions</h3>
+      <div id="dimensions" class="dimensions"></div>
+      <div id="assessment-meta"></div>
+      <button id="assessment-trace" type="button">Trace assessment to sources</button>
+      <h3>Metrics and vintages</h3>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Metric</th><th>Value</th><th>Observation date</th><th>Vintage</th><th>Validation</th><th>Provenance</th></tr></thead>
+        <tbody id="metrics"></tbody>
+      </table></div>
+      <h3>Transmission mechanisms</h3><div id="relationships"></div>
+      <h3>Institutional support</h3><div id="interventions"></div>
+      <h3>Institutional statements (not economic outcomes)</h3><div id="institutional_statements"></div>
+      <h3>Hypotheses and counter-evidence</h3><div id="hypotheses"></div>
+      <h3>Evidence and source registry</h3><div id="evidence"></div><div id="sources"></div>
+      <h3>Illustrative scenario</h3>
+      <p>Propagation is conditional on documented assumptions. It is not a forecast or a risk score.</p>
+      <form id="scenario">
+        <label for="shock">Illustrative shock (−100% to 100%, not score points)</label>
+        <input id="shock" type="number" min="-100" max="100" step="any" value="10" required>
+        <label for="horizon">Horizon (months)</label>
+        <input id="horizon" type="number" min="1" max="120" value="12" required>
+        <button type="submit">Run scenario</button>
+      </form>
+      <pre id="scenario-result" tabindex="0"></pre>
+    </section>
+    <section aria-labelledby="trace-title">
+      <h2 id="trace-title">Provenance inspector</h2>
+      <p>Assessment → node / metric / relationship → observation / evidence → source.
+        Missing evidence is a gap, never silently treated as support.</p>
+      <pre id="trace" tabindex="0">Select a trace button to inspect the underlying records.</pre>
+    </section>
+  </main>
+  <footer>Open methodology · Explicit uncertainty · Human governance</footer>
+</body>
+</html>

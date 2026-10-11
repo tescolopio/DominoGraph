@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+data/raw
+data/staging
+data/normalized
+data/snapshots
+data/*.db*
+node_modules
+dist

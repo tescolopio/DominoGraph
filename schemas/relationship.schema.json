@@ -1,0 +1,178 @@
+{
+  "$defs": {
+    "EvidenceState": {
+      "enum": [
+        "observed",
+        "inferred",
+        "correlated",
+        "causally_supported",
+        "forecast",
+        "advocated",
+        "policy_proposed",
+        "policy_adopted",
+        "implemented",
+        "documented_coordination",
+        "unverified",
+        "disputed"
+      ],
+      "title": "EvidenceState",
+      "type": "string"
+    },
+    "ReviewStatus": {
+      "enum": [
+        "unreviewed",
+        "pending",
+        "approved",
+        "rejected",
+        "needs_revision"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://dominograph.example/schemas/1.0.0/relationship.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "alternative_explanations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Alternative Explanations",
+      "type": "array"
+    },
+    "assumptions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "counter_evidence_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Counter Evidence Ids",
+      "type": "array"
+    },
+    "direction": {
+      "enum": [
+        "positive",
+        "negative",
+        "ambiguous"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "estimated_lag": {
+      "maximum": 120,
+      "minimum": 0,
+      "title": "Estimated Lag",
+      "type": "integer"
+    },
+    "evidence_gaps": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Evidence Gaps",
+      "type": "array"
+    },
+    "evidence_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "evidence_state": {
+      "$ref": "#/$defs/EvidenceState"
+    },
+    "from_node": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "From Node",
+      "type": "string"
+    },
+    "id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "illustrative_coefficient": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Illustrative Coefficient",
+      "type": "number"
+    },
+    "mechanism": {
+      "minLength": 1,
+      "title": "Mechanism",
+      "type": "string"
+    },
+    "relationship_type": {
+      "default": "hypothesized_transmission",
+      "enum": [
+        "association",
+        "hypothesized_transmission"
+      ],
+      "title": "Relationship Type",
+      "type": "string"
+    },
+    "review_status": {
+      "$ref": "#/$defs/ReviewStatus",
+      "default": "unreviewed"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "to_node": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "To Node",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "from_node",
+    "to_node",
+    "mechanism",
+    "direction",
+    "estimated_lag",
+    "confidence",
+    "evidence_state",
+    "evidence_ids",
+    "counter_evidence_ids",
+    "alternative_explanations",
+    "evidence_gaps",
+    "assumptions",
+    "illustrative_coefficient"
+  ],
+  "title": "Relationship",
+  "type": "object"
+}

@@ -1,0 +1,114 @@
+{
+  "$id": "https://dominograph.example/schemas/1.0.0/source.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "license": {
+      "minLength": 1,
+      "title": "License",
+      "type": "string"
+    },
+    "license_url": {
+      "minLength": 1,
+      "title": "License Url",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "methodology": {
+      "minLength": 1,
+      "title": "Methodology",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "publisher": {
+      "minLength": 1,
+      "title": "Publisher",
+      "type": "string"
+    },
+    "redistribution_allowed": {
+      "title": "Redistribution Allowed",
+      "type": "boolean"
+    },
+    "revision_policy": {
+      "minLength": 1,
+      "title": "Revision Policy",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "synthetic": {
+      "default": false,
+      "title": "Synthetic",
+      "type": "boolean"
+    },
+    "update_cadence": {
+      "minLength": 1,
+      "title": "Update Cadence",
+      "type": "string"
+    },
+    "url": {
+      "minLength": 1,
+      "title": "Url",
+      "type": "string"
+    },
+    "verification_notes": {
+      "minLength": 1,
+      "title": "Verification Notes",
+      "type": "string"
+    },
+    "verification_tier": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H"
+      ],
+      "title": "Verification Tier",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "publisher",
+    "url",
+    "verification_tier",
+    "verification_notes",
+    "license",
+    "redistribution_allowed",
+    "license_url",
+    "methodology",
+    "update_cadence",
+    "revision_policy",
+    "limitations"
+  ],
+  "title": "Source",
+  "type": "object"
+}

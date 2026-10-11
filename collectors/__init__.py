@@ -1,0 +1,1 @@
+"""Allowlisted collection adapters."""
