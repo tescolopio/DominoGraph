@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy import insert
 from sqlalchemy.exc import IntegrityError
 
-from agents.protocols import RoutingTier, TaskMetadata, route
+from agents.protocols import Research, RoutingTier, TaskMetadata, route
 from api.main import create_app
 from collectors.fred import FredCollector
 from collectors.synthetic import SyntheticCollector
@@ -288,6 +288,7 @@ class PilotCase(unittest.TestCase):
                 FredCollector("GDP").collect()
 
     def test_routing_forbids_ai_for_deterministic_tasks(self):
+        self.assertTrue(callable(Research.extract))
         self.assertEqual(RoutingTier.DETERMINISTIC, route("score"))
         self.assertEqual(RoutingTier.ANALYTICAL, route("research"))
         self.assertEqual(5, len(RoutingTier))
