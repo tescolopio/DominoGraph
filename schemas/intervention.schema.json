@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "ReviewStatus": {
+      "enum": [
+        "unreviewed",
+        "pending",
+        "approved",
+        "rejected",
+        "needs_revision"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://dominograph.example/schemas/1.0.0/intervention.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "intent_evidence_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Intent Evidence Ids",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "node_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Node Ids",
+      "type": "array"
+    },
+    "observation_evidence_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Observation Evidence Ids",
+      "type": "array"
+    },
+    "policy_type": {
+      "minLength": 1,
+      "title": "Policy Type",
+      "type": "string"
+    },
+    "review_status": {
+      "$ref": "#/$defs/ReviewStatus",
+      "default": "unreviewed"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "announced",
+        "implemented",
+        "withdrawn"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "node_ids",
+    "name",
+    "policy_type",
+    "description",
+    "status",
+    "observation_evidence_ids",
+    "intent_evidence_ids",
+    "limitations"
+  ],
+  "title": "Intervention",
+  "type": "object"
+}

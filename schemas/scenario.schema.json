@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "ReviewStatus": {
+      "enum": [
+        "unreviewed",
+        "pending",
+        "approved",
+        "rejected",
+        "needs_revision"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://dominograph.example/schemas/1.0.0/scenario.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assumptions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "evidence_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "horizon_months": {
+      "maximum": 120,
+      "minimum": 1,
+      "title": "Horizon Months",
+      "type": "integer"
+    },
+    "id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "impacts": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Impacts",
+      "type": "array"
+    },
+    "kind": {
+      "const": "illustrative_not_forecast",
+      "default": "illustrative_not_forecast",
+      "title": "Kind",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "node_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "propagation_version": {
+      "default": "bounded-path-v1",
+      "enum": [
+        "bounded-path-v1",
+        "bounded-path-v2"
+      ],
+      "title": "Propagation Version",
+      "type": "string"
+    },
+    "relationship_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Relationship Ids",
+      "type": "array"
+    },
+    "review_status": {
+      "$ref": "#/$defs/ReviewStatus",
+      "default": "unreviewed"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "shock": {
+      "maximum": 100,
+      "minimum": -100,
+      "title": "Shock",
+      "type": "number"
+    },
+    "skipped_relationships": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Skipped Relationships",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "node_id",
+    "shock",
+    "horizon_months",
+    "impacts",
+    "relationship_ids",
+    "evidence_ids",
+    "skipped_relationships",
+    "assumptions",
+    "limitations",
+    "confidence"
+  ],
+  "title": "Scenario",
+  "type": "object"
+}

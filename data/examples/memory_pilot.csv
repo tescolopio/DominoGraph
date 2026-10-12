@@ -1,0 +1,11 @@
+metric_id,value,observation_date,publication_date,vintage
+dram,108,2025-12-01,2026-01-10,pilot-2026-01
+hbm,132,2025-12-01,2026-01-10,pilot-2026-01
+nand,104,2025-12-01,2026-01-10,pilot-2026-01
+inventory,85,2025-12-01,2026-01-10,pilot-2026-01
+fab-capex,115,2025-12-01,2026-01-10,pilot-2026-01
+hyperscaler-capex,140,2025-12-01,2026-01-10,pilot-2026-01
+pc,95,2025-12-01,2026-01-10,pilot-2026-01
+smartphone,98,2025-12-01,2026-01-10,pilot-2026-01
+datacenter,128,2025-12-01,2026-01-10,pilot-2026-01
+equipment-spending,112,2025-12-01,2026-01-10,pilot-2026-01

@@ -1,0 +1,29 @@
+name: Evidence or methodology proposal
+description: Challenge a claim, propose a source, or improve the model.
+body:
+  - type: textarea
+    id: claim
+    attributes:
+      label: Claim or proposed change
+      description: Describe scope, mechanism, expected lag, and alternative explanations.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting and contradicting evidence
+      description: Link sources; identify search gaps and confidence. Do not include restricted data.
+    validations:
+      required: true
+  - type: textarea
+    id: falsification
+    attributes:
+      label: Falsification and validation
+      description: What would disprove the claim? Which datasets or tests are needed?
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source documentation (if applicable)
+      description: Publisher, methodology, cadence, revisions, license, and limitations.
