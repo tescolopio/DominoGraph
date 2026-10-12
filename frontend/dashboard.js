@@ -55,11 +55,11 @@ function drawGraph() {
     const downstream = graph.relationships.filter((edge) => edge.from_node === node.id);
     for (const edge of downstream) {
       const target = graph.nodes.find((item) => item.id === edge.to_node);
-      button.append(element("small", ` → ${target ? target.name : edge.to_node} (${edge.evidence_state}; confidence ${edge.confidence} / 1)`));
+      button.append(element("small", ` → ${target ? target.name : edge.to_node} (${edge.evidence_state}; ${edge.review_status}; confidence ${edge.confidence} / 1)`));
     }
     for (const edge of graph.relationships.filter((item) => item.to_node === node.id)) {
       const source = graph.nodes.find((item) => item.id === edge.from_node);
-      button.append(element("small", ` ← ${source ? source.name : edge.from_node} (${edge.evidence_state}; confidence ${edge.confidence} / 1)`));
+      button.append(element("small", ` ← ${source ? source.name : edge.from_node} (${edge.evidence_state}; ${edge.review_status}; confidence ${edge.confidence} / 1)`));
     }
     button.addEventListener("click", () => selectNode(node.id));
     byId("graph").append(button);

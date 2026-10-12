@@ -23,3 +23,12 @@ must use its retained observation IDs and versioned rules, not today's latest da
 
 Raw content hashes establish content identity, not authenticity or truth. Review
 licensing and methodological validity independently of technical validation.
+
+The provenance endpoint follows only retained forward references. It does not
+expand a node into all current metrics, observations, assessments or neighboring
+relationships. Use node detail and graph endpoints for that contextual exploration.
+Adding later vintages therefore cannot alter an existing assessment's lineage.
+
+Both relationships and hypotheses require approval plus supporting evidence of
+the matching type before using `causally_supported` or `documented_coordination`.
+Approval alone cannot promote synthetic evidence into those classifications.

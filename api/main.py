@@ -53,7 +53,7 @@ def create_app(store: Store | None = None):
         metrics = [m for m in database.all("metric") if m["node_id"] == node_id]
         metric_ids = {m["id"] for m in metrics}
         observations = [o for o in database.all("observation") if o["metric_id"] in metric_ids]
-        relationships = [r for r in database.all("relationship") if node_id in (r["from_node"], r["to_node"])]
+        relationships = [r for r in database.current_relationships() if node_id in (r["from_node"], r["to_node"])]
         hypotheses = [h for h in database.all("hypothesis") if node_id in h["node_ids"]]
         interventions = [i for i in database.all("intervention") if node_id in i["node_ids"]]
         assessments = sorted([a for a in database.all("assessment") if a["node_id"] == node_id],
@@ -81,7 +81,7 @@ def create_app(store: Store | None = None):
 
     @app.get("/api/graph")
     def graph():
-        return {"nodes": app.state.store.all("node"), "relationships": app.state.store.all("relationship")}
+        return {"nodes": app.state.store.all("node"), "relationships": app.state.store.current_relationships()}
 
     @app.get("/api/sources")
     def sources():

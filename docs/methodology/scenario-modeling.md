@@ -15,3 +15,10 @@ must be identified in outputs. Scenarios do not authorize causal promotion of ed
 
 Before empirical use, validate coefficients, lags, feedback, nonlinearities, and
 uncertainty against historical out-of-sample events and alternative mechanisms.
+
+`bounded-path-v2` sums all accepted path contributions for each target using
+accurate floating-point summation, then clamps the final result to [-100, 100].
+Clamping after each contribution made mixed-sign results depend on relationship
+ordering. The new version is included in scenario identity; retained v1 scenarios
+remain readable without recalculation. New runs use only current relationship
+versions and exclude rejected or needs-revision versions.

@@ -61,7 +61,7 @@ class PilotCase(unittest.TestCase):
         self.assertEqual(len(keys), len(set(keys)))
         self.assertIn(("institutionalstatement", "statement-pilot"), keys)
         node_lineage = self.store.provenance("node", "ai-capex")
-        self.assertIn("observation", {row["entity_type"] for row in node_lineage["lineage"]})
+        self.assertEqual(["node"], [row["entity_type"] for row in node_lineage["lineage"]])
 
     def test_missing_reference_rolls_back_entire_batch(self):
         node = self.model("node", "ai-capex").model_copy(update={"id": "new-node"})

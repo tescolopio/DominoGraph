@@ -149,6 +149,21 @@
       "title": "Schema Version",
       "type": "string"
     },
+    "supersedes": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
     "to_node": {
       "maxLength": 200,
       "minLength": 1,

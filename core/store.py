@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import (JSON, Column, ForeignKeyConstraint, MetaData, String, Table,
+from sqlalchemy import (JSON, Column, ForeignKeyConstraint, Index, MetaData, String, Table,
                         create_engine, event, insert, select)
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import StaticPool
@@ -31,6 +31,11 @@ links = Table("entity_references", metadata,
               ForeignKeyConstraint(["owner_kind", "owner_id"], ["entities.kind", "entities.id"]),
               ForeignKeyConstraint(["target_kind", "target_id"], ["entities.kind", "entities.id"]))
 
+# A relationship version has at most one successor, including concurrent writers.
+_supersession = (links.c.owner_kind == "relationship") & (links.c.target_kind == "relationship")
+Index("one_relationship_successor", links.c.target_kind, links.c.target_id,
+      unique=True, sqlite_where=_supersession, postgresql_where=_supersession)
+
 REFERENCE_FIELDS = {
     "metric": {"node_id": "node"},
     "rawsnapshot": {"source_id": "source"},
@@ -39,7 +44,7 @@ REFERENCE_FIELDS = {
     "evidence": {"source_id": "source", "observation_ids": "observation",
                  "statement_ids": "institutionalstatement"},
     "relationship": {"from_node": "node", "to_node": "node", "evidence_ids": "evidence",
-                     "counter_evidence_ids": "evidence"},
+                     "counter_evidence_ids": "evidence", "supersedes": "relationship"},
     "institutionalstatement": {"source_id": "source", "policy_id": "intervention"},
     "intervention": {"node_ids": "node", "observation_evidence_ids": "evidence",
                      "intent_evidence_ids": "evidence"},
@@ -90,6 +95,9 @@ class Store:
 
     def initialize(self):
         metadata.create_all(self.engine)
+        # create_all does not add indexes to tables in an existing pilot database.
+        for index in links.indexes:
+            index.create(self.engine, checkfirst=True)
         # Protect raw revisions even from accidental direct SQL writes in SQLite.
         if self.engine.dialect.name == "sqlite":
             with self.engine.begin() as connection:
@@ -122,6 +130,12 @@ class Store:
             raise KeyError(f"unknown {kind}: {identity}")
         return result
 
+    def current_relationships(self):
+        """Resolve immutable version chains; include rejected tips for inspection."""
+        records = self.all("relationship")
+        superseded = {r.get("supersedes") for r in records if r.get("supersedes")}
+        return [r for r in records if r["id"] not in superseded]
+
     def put_many(self, objects: list[Canonical]):
         pending = {}
         for obj in objects:
@@ -137,7 +151,7 @@ class Store:
             existing = {(row.kind, row.id): row.payload for row in connection.execute(select(entities))}
             combined = existing | pending
             for key, payload in pending.items():
-                if key in existing and existing[key] != payload:
+                if key in existing and MODELS[key[0]].model_validate(existing[key]).model_dump(mode="json") != payload:
                     raise ValueError(f"immutable ID already exists: {key}")
                 for target in references(key[0], payload):
                     if target not in combined:
@@ -175,6 +189,8 @@ class Store:
                 prior = get("observation", payload["revision_of"])
                 if prior["metric_id"] != payload["metric_id"] or prior["observation_date"] != payload["observation_date"]:
                     raise ValueError("revision must retain metric and observation date")
+                if prior["source_id"] != payload["source_id"]:
+                    raise ValueError("revision must retain source")
                 if instant(prior["retrieval_time"]) > instant(payload["retrieval_time"]):
                     raise ValueError("revision retrieval must not precede original")
                 revision_chain = {payload["id"]}
@@ -201,20 +217,22 @@ class Store:
             if payload["evidence_state"] == "documented_coordination":
                 if not payload["statement_ids"] or get("source", payload["source_id"])["synthetic"]:
                     raise ValueError("coordination requires direct non-synthetic institutional documentation")
-        if kind == "relationship" and payload["evidence_state"] == "causally_supported":
-            support = [get("evidence", item) for item in payload["evidence_ids"]]
+        if kind in {"relationship", "hypothesis"} and payload["evidence_state"] == "causally_supported":
+            support_ids = payload["evidence_ids"] if kind == "relationship" else payload["supporting_evidence_ids"]
+            support = [get("evidence", item) for item in support_ids]
             if payload["review_status"] != "approved" or not any(
                 e["evidence_state"] == "causally_supported" and e["polarity"] == "supporting"
                 for e in support
             ):
-                raise ValueError("causal relationship needs reviewed causal identification evidence")
-        if kind == "relationship" and payload["evidence_state"] == "documented_coordination":
+                raise ValueError(f"causal {kind} needs reviewed causal identification evidence")
+        if kind in {"relationship", "hypothesis"} and payload["evidence_state"] == "documented_coordination":
+            support_ids = payload["evidence_ids"] if kind == "relationship" else payload["supporting_evidence_ids"]
             if payload["review_status"] != "approved" or not any(
                 get("evidence", item)["evidence_state"] == "documented_coordination"
                 and get("evidence", item)["polarity"] == "supporting"
-                for item in payload["evidence_ids"]
+                for item in support_ids
             ):
-                raise ValueError("coordination relationship requires reviewed documentation evidence")
+                raise ValueError(f"coordination {kind} requires reviewed documentation evidence")
         if kind in {"relationship", "hypothesis", "assessment", "scenario"}:
             evidence_ids = (payload.get("evidence_ids", []) +
                             payload.get("counter_evidence_ids", []) +
@@ -234,6 +252,20 @@ class Store:
             ):
                 raise ValueError("scenario confidence exceeds relationship confidence")
         if kind == "relationship":
+            previous_id = payload.get("supersedes")
+            if previous_id:
+                previous = get("relationship", previous_id)
+                if (previous["from_node"], previous["to_node"]) != (payload["from_node"], payload["to_node"]):
+                    raise ValueError("relationship revision must retain endpoints")
+                if any(k == "relationship" and p["id"] != payload["id"]
+                       and p.get("supersedes") == previous_id for (k, _), p in combined.items()):
+                    raise ValueError("relationship version already has a successor")
+                seen = {payload["id"]}
+                while previous:
+                    if previous["id"] in seen:
+                        raise ValueError("relationship supersession must not contain cycles")
+                    seen.add(previous["id"])
+                    previous = get("relationship", previous["supersedes"]) if previous.get("supersedes") else None
             if any(get("evidence", item)["polarity"] != "supporting" for item in payload["evidence_ids"]):
                 raise ValueError("relationship supporting evidence polarity mismatch")
             if any(get("evidence", item)["polarity"] != "contradicting" for item in payload["counter_evidence_ids"]):
@@ -263,21 +295,8 @@ class Store:
         with self.engine.connect() as connection:
             records = {(row.kind, row.id): row.payload for row in connection.execute(select(entities))}
         adjacency = {key: references(key[0], payload) for key, payload in records.items()}
-        # Nodes and metric definitions also expose their measured lineage. These
-        # reverse ownership links are read-only navigation, not FK dependencies.
-        for key, payload in records.items():
-            if key[0] == "metric":
-                adjacency[("node", payload["node_id"])].add(key)
-            if key[0] == "observation":
-                adjacency[("metric", payload["metric_id"])].add(key)
-            if key[0] == "assessment":
-                adjacency[("node", payload["node_id"])].add(key)
-            if key[0] == "evidence":
-                for observation_id in payload["observation_ids"]:
-                    adjacency[("observation", observation_id)].add(key)
-            if key[0] == "relationship":
-                for field in ("from_node", "to_node"):
-                    adjacency[("node", payload[field])].add(key)
+        # Only retained forward references define provenance. Graph exploration
+        # and node detail expose current neighbors without contaminating history.
 
         def walk(key):
             if key in visited:

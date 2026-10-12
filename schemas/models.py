@@ -160,6 +160,7 @@ class Evidence(Canonical):
 
 
 class Relationship(Canonical):
+    supersedes: Id | None = None
     from_node: Id
     to_node: Id
     mechanism: Text
@@ -178,6 +179,8 @@ class Relationship(Canonical):
 
     @model_validator(mode="after")
     def not_causal(self):
+        if self.supersedes == self.id:
+            raise ValueError("self supersession is not allowed")
         if self.from_node == self.to_node:
             raise ValueError("self relationship is not supported")
         if not self.counter_evidence_ids and not self.evidence_gaps:
@@ -296,7 +299,7 @@ class Scenario(Canonical):
     shock: Annotated[float, Field(ge=-100, le=100)]
     horizon_months: Annotated[int, Field(ge=1, le=120)]
     kind: Literal["illustrative_not_forecast"] = "illustrative_not_forecast"
-    propagation_version: Literal["bounded-path-v1"] = "bounded-path-v1"
+    propagation_version: Literal["bounded-path-v1", "bounded-path-v2"] = "bounded-path-v1"
     impacts: list[dict]
     relationship_ids: list[Id]
     evidence_ids: list[Id]

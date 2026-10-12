@@ -2,6 +2,7 @@
 
 from hashlib import sha256
 import json
+from math import fsum
 
 from schemas.models import Scenario
 
@@ -15,7 +16,7 @@ class ScenarioLimitError(ValueError):
 
 def run_scenario(store, node_id, shock, horizon_months, *, max_steps=MAX_STEPS, max_paths=MAX_PATHS):
     store.get("node", node_id)
-    snapshot = store.all("relationship")
+    snapshot = store.current_relationships()
     skipped = [{"relationship_id": edge["id"], "reason": "human review: " + edge["review_status"]}
                for edge in snapshot if edge["review_status"] in {"rejected", "needs_revision"}]
     relationships = [edge for edge in snapshot if edge["review_status"] not in {"rejected", "needs_revision"}]
@@ -27,6 +28,7 @@ def run_scenario(store, node_id, shock, horizon_months, *, max_steps=MAX_STEPS, 
                         "confidence": 0.0, "paths": [[]]}}
     used = set()
     evidence = set()
+    contributions = {}
 
     def walk(current, change, elapsed, visited, path, confidence):
         nonlocal steps, paths
@@ -49,7 +51,7 @@ def run_scenario(store, node_id, shock, horizon_months, *, max_steps=MAX_STEPS, 
             certainty = min(confidence, edge["confidence"])
             item = impacts.setdefault(target, {"node_id": target, "illustrative_change_percent": 0,
                                                "confidence": certainty, "paths": []})
-            item["illustrative_change_percent"] = max(-100, min(100, item["illustrative_change_percent"] + delta))
+            contributions.setdefault(target, []).append(delta)
             item["confidence"] = min(item["confidence"], certainty)
             item["paths"].append(next_path)
             used.add(edge["id"])
@@ -57,9 +59,12 @@ def run_scenario(store, node_id, shock, horizon_months, *, max_steps=MAX_STEPS, 
             walk(target, delta, lag, visited | {target}, next_path, certainty)
 
     walk(node_id, shock, 0, {node_id}, [], 1.0)
-    identity = sha256(json.dumps([node_id, shock, horizon_months, snapshot],
+    for target, values in contributions.items():
+        impacts[target]["illustrative_change_percent"] = max(-100, min(100, fsum(values)))
+    identity = sha256(json.dumps(["bounded-path-v2", node_id, shock, horizon_months, snapshot],
                                  sort_keys=True).encode()).hexdigest()[:24]
     return Scenario(id="scenario-" + identity, node_id=node_id, shock=shock,
+                    propagation_version="bounded-path-v2",
                     horizon_months=horizon_months, impacts=list(impacts.values()),
                     relationship_ids=sorted(used), evidence_ids=sorted(evidence),
                     skipped_relationships=skipped,

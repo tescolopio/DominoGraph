@@ -16,6 +16,8 @@ def snapshot(collection: Collected, source_id: str) -> RawSnapshot:
 
 
 def normalize_csv(raw: RawSnapshot, existing_observations=(), transformation_version="csv-normalization-v1") -> list[Observation]:
+    existing_observations = tuple(existing_observations)
+    by_id = {o.id: o for o in existing_observations}
     rows = csv.DictReader(io.StringIO(raw.content))
     required = {"metric_id", "value", "observation_date", "publication_date", "vintage"}
     if not required <= set(rows.fieldnames or []):
@@ -23,8 +25,11 @@ def normalize_csv(raw: RawSnapshot, existing_observations=(), transformation_ver
     result = []
     for number, row in enumerate(rows, start=2):
         identity = sha256((raw.id + ":" + str(number) + ":" + transformation_version).encode()).hexdigest()
+        existing = by_id.get("obs-" + identity)
         prior = sorted((o for o in existing_observations
-                        if o.metric_id == row["metric_id"] and str(o.observation_date) == row["observation_date"]),
+                        if o.id != "obs-" + identity and o.source_id == raw.source_id
+                        and o.metric_id == row["metric_id"] and str(o.observation_date) == row["observation_date"]
+                        and o.retrieval_time <= raw.retrieval_time),
                        key=lambda o: (o.retrieval_time, o.id))
         result.append(Observation(
             id="obs-" + identity, metric_id=row["metric_id"], value=float(row["value"]),
@@ -32,7 +37,7 @@ def normalize_csv(raw: RawSnapshot, existing_observations=(), transformation_ver
             publication_date=row["publication_date"], observation_date=row["observation_date"],
             vintage=row["vintage"], collector_version=raw.collector_version,
             transformation_version=transformation_version, validation_state="valid",
-            revision_of=prior[-1].id if prior and prior[-1].id != "obs-" + identity else None,
+            revision_of=existing.revision_of if existing else (prior[-1].id if prior else None),
             raw_snapshot_id=raw.id, normalization_lineage=[
                 f"raw_snapshot:{raw.id}", f"csv_row:{number}",
                 f"transformation:{transformation_version}", "value:float;unit:metric-defined"],
