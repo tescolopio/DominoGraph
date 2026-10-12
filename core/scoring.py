@@ -49,7 +49,7 @@ def assess(node_id: str, metrics: list[Metric], observations: list[Observation],
         for metric in sorted(metrics, key=lambda m: m.id):
             weight = RULE_WEIGHTS[dimension].get(metric.id)
             obs = latest.get(metric.id)
-            if weight is None or obs is None:
+            if weight is None or obs is None or metric.baseline is None:
                 gaps.append(f"Missing observation or independent {dimension} rule for metric:{metric.id}.")
                 continue
             sign = 1 if metric.contextual_direction == "higher_is_pressure" else -1

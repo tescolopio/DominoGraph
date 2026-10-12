@@ -5,11 +5,13 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.scenarios import ScenarioLimitError, run_scenario
 from core.store import Store
 from schemas.models import Id, MODELS, Scenario
+from api.indicators import router as indicator_router
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,7 +33,9 @@ def create_app(store: Store | None = None):
         if owned:
             app.state.store.engine.dispose()
 
-    app = FastAPI(title="DominoGraph SYNTHETIC pilot", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="DominoGraph local economic explorer", version="0.2.0", lifespan=lifespan)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]", "testserver"])
+    app.include_router(indicator_router)
 
     @app.exception_handler(KeyError)
     async def missing_reference(request, exc):
@@ -104,6 +108,10 @@ def create_app(store: Store | None = None):
 
     @app.get("/")
     def index():
+        return FileResponse(ROOT / "frontend" / "explorer.html")
+
+    @app.get("/pilot")
+    def pilot():
         file = ROOT / "frontend" / "index.html"
         if not file.is_file():
             raise HTTPException(404, "frontend not installed")

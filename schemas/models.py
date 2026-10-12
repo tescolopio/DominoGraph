@@ -56,10 +56,17 @@ class Metric(Canonical):
     unit: Text
     frequency: Literal["daily", "monthly", "quarterly", "annual"]
     description: Text
-    baseline: float
-    scale: Annotated[float, Field(gt=0)]
-    contextual_direction: Literal["higher_is_pressure", "lower_is_pressure"]
+    baseline: float | None = None
+    scale: Annotated[float, Field(gt=0)] | None = None
+    contextual_direction: Literal["higher_is_pressure", "lower_is_pressure"] | None = None
     context: Text
+
+    @model_validator(mode="after")
+    def complete_scoring_rule(self):
+        rule = (self.baseline, self.scale, self.contextual_direction)
+        if any(v is not None for v in rule) and any(v is None for v in rule):
+            raise ValueError("scoring inputs must be either complete or absent")
+        return self
 
 
 class Source(Canonical):
@@ -103,7 +110,7 @@ class Observation(Canonical):
     source_id: Id
     source_url: Text
     retrieval_time: datetime
-    publication_date: date
+    publication_date: date | None
     observation_date: date
     vintage: Text
     collector_version: Text
@@ -119,9 +126,9 @@ class Observation(Canonical):
     def chronology(self):
         if self.retrieval_time.tzinfo is None:
             raise ValueError("retrieval_time must be timezone aware")
-        if self.publication_date > self.retrieval_time.astimezone(timezone.utc).date():
+        if self.publication_date and self.publication_date > self.retrieval_time.astimezone(timezone.utc).date():
             raise ValueError("publication_date is after retrieval")
-        if self.observation_date > self.publication_date:
+        if self.publication_date and self.observation_date > self.publication_date:
             raise ValueError("observation_date is after publication")
         if self.revision_of == self.id:
             raise ValueError("self revision is not allowed")

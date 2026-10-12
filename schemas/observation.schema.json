@@ -66,9 +66,16 @@
       "type": "string"
     },
     "publication_date": {
-      "format": "date",
-      "title": "Publication Date",
-      "type": "string"
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Publication Date"
     },
     "raw_snapshot_id": {
       "maxLength": 200,

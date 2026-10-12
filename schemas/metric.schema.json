@@ -4,8 +4,16 @@
   "additionalProperties": false,
   "properties": {
     "baseline": {
-      "title": "Baseline",
-      "type": "number"
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline"
     },
     "context": {
       "minLength": 1,
@@ -13,12 +21,20 @@
       "type": "string"
     },
     "contextual_direction": {
-      "enum": [
-        "higher_is_pressure",
-        "lower_is_pressure"
+      "anyOf": [
+        {
+          "enum": [
+            "higher_is_pressure",
+            "lower_is_pressure"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ],
-      "title": "Contextual Direction",
-      "type": "string"
+      "default": null,
+      "title": "Contextual Direction"
     },
     "dataset": {
       "minLength": 1,
@@ -60,9 +76,17 @@
       "type": "string"
     },
     "scale": {
-      "exclusiveMinimum": 0,
-      "title": "Scale",
-      "type": "number"
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scale"
     },
     "schema_version": {
       "const": "1.0.0",
@@ -84,9 +108,6 @@
     "unit",
     "frequency",
     "description",
-    "baseline",
-    "scale",
-    "contextual_direction",
     "context"
   ],
   "title": "Metric",

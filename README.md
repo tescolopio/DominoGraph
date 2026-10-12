@@ -1,13 +1,46 @@
 # DominoGraph
 Open-source economic intelligence platform that maps global financial, policy, market, and real-economy dependencies into a traceable graph of risks, supports, firebreaks, hypotheses, and transmission paths.
 
-## Runnable first milestone
+## Local indicator explorer
+
+The home page is a working economic indicator library with search, saved indicators,
+annual charts, source inspection and historical download cutoffs. Refresh downloads
+GDP growth, consumer-price inflation and modeled unemployment from World Bank WDI.
+United States, Canada, United Kingdom, Germany and Japan are supported. No API key
+is required. Data persists locally and remains readable when the source is offline.
+
+Each series retains raw snapshots, revisions and attribution. Original publication
+dates are unknown where the source does not supply them; download history is not an
+original-release archive. Imported metrics have no invented pressure-scoring rules.
+Saved indicator preferences live in browser storage.
+
+For Docker:
+
+```sh
+docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml exec api python -m scripts.sync_worldbank --country US
+```
+
+Open <http://127.0.0.1:8765>. Set `DOMINOGRAPH_PORT` to choose another host port.
+Use **Refresh this economy** to add or update the selected economy. Refresh is
+explicit and atomic: failed downloads preserve existing data. The named SQL
+database volume survives container recreation; do not remove it when upgrading.
+The application binds to loopback and is intended for a single local workspace.
+PostgreSQL remains an option through `DATABASE_URL`; SQLite is the default.
+
+Source definitions and licenses:
+[GDP growth](https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG),
+[inflation](https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG),
+[modeled unemployment](https://data.worldbank.org/indicator/SL.UEM.TOTL.ZS).
+The World Bank and underlying providers are credited in the app.
+
+## Synthetic dependency pilot
 
 The Memory & Compute pilot provides a source registry, immutable observations,
 versioned scoring, explicit evidence and counter-evidence, hypotheses, dependency
 inspection, and an illustrative scenario runner.
 
-**All included economic data is synthetic.** It demonstrates the plumbing, not
+**The bundled Memory & Compute fixture is synthetic.** It demonstrates the plumbing, not
 the state of markets, institutional intent, documented coordination, or predictive
 accuracy. Do not use the sample assessments to make financial decisions.
 
@@ -23,7 +56,8 @@ python -m scripts.seed
 uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open <http://127.0.0.1:8000> for the dashboard and `/docs` for the API.
+Open <http://127.0.0.1:8000> for the explorer, `/pilot` for the synthetic dependency
+dashboard and `/docs` for the API. Run `python -m scripts.sync_worldbank` to import U.S. indicators.
 Seeding is explicit; importing the API must not invent data.
 SQLite is the default local metadata store. Set `DATABASE_URL` for PostgreSQL.
 `.env.example` describes configuration; commands do not automatically load `.env`.

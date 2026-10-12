@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 *.egg-info/
 .pytest_cache/
 .env
@@ -12,6 +13,7 @@ data/normalized/
 data/snapshots/
 data/*.db
 data/*.db-*
+data/*.log
 dist/
 node_modules/
 coverage/

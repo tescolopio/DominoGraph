@@ -172,15 +172,17 @@ byId("scenario").addEventListener("submit", async (event) => {
 (async () => {
   try {
     const [nodes, graphData] = await Promise.all([request("/api/nodes"), request("/api/graph")]);
-    graph = graphData;
-    for (const node of nodes) {
+    const pilotNodes = nodes.filter(node => node.domain === "memory-and-ai");
+    const pilotIds = new Set(pilotNodes.map(node => node.id));
+    graph = {nodes: pilotNodes, relationships: graphData.relationships.filter(edge => pilotIds.has(edge.from_node) && pilotIds.has(edge.to_node))};
+    for (const node of pilotNodes) {
       const option = element("option", node.name);
       option.value = node.id;
       byId("node").append(option);
     }
     drawGraph();
-    if (nodes.length) {
-      const pilot = nodes.find((node) => node.id === "D-MEM-001") || nodes[0];
+    if (pilotNodes.length) {
+      const pilot = pilotNodes[0];
       await selectNode(pilot.id);
     } else {
       byId("status").textContent = "No nodes yet. Run python -m scripts.seed, then reload.";
