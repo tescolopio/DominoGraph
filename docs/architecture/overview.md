@@ -34,6 +34,11 @@ table.
 File-backed SQLite recovery uses the native online backup API, not live file
 copying. Backup and restore validate a standalone temporary snapshot, including
 canonical semantics, exact stored provenance, and operational run chronology.
+Table definitions must match the canonical SQLite DDL, including declared types,
+nullability, defaults, primary/foreign keys, uniqueness, and CHECK constraints.
+Whitespace and keyword case are ignored without folding string literals.
+Legacy compatibility permits missing run tables and repairable indexes/triggers,
+not existing tables with weaker constraints that `create_all` cannot retrofit.
 Restore applies the existing additive initialization only to that temporary copy;
 a retained-content checksum must remain identical before publication. Publication
 uses a same-filesystem hard link to atomically refuse existing destinations, even

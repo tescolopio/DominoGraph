@@ -161,12 +161,18 @@ switching back to its old URL provides rollback without replacing either file.
 Keep the same host and port as your normal startup if you want to reuse existing
 browser-local indicator preferences; a different origin has separate browser storage.
 
-Restore validates SQLite integrity, foreign keys, recognized table/column layouts,
-canonical schemas and semantics, exact provenance references, and run outcomes/
+Restore validates SQLite integrity and canonical table definitions, including types,
+defaults, nullability, primary/foreign keys, uniqueness, and CHECK constraints.
+It also validates canonical record schemas and semantics, exact provenance references, and run outcomes/
 chronology. It validates a temporary copy before and after the existing additive
 initialization. Legacy databases gain missing indexes, immutable-record guards,
 and an empty run-history table without rewriting payloads or inventing checks.
 Interrupted attempts remain incomplete; restoring does not retry collection.
+Supported legacy differences are a missing run-history table and missing
+initialization-repairable indexes/triggers, not weakened existing table constraints.
+SQL whitespace and keyword case may differ; string literals and the canonical
+table declarations must otherwise match. Unrecognized custom definitions are
+rejected rather than treated as safe upgrades.
 
 Both operations refuse existing destination files, including aliases/symlinks,
 and existing SQLite sidecars. They publish only a validated completed file and

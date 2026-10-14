@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import time
 from contextlib import closing, contextmanager
@@ -9,6 +10,9 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+
+from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
+from sqlalchemy.schema import CreateTable
 
 from core.store import Store, entities, ingestion_runs, links, references, resolve_database_url
 from schemas.models import MODELS
@@ -51,13 +55,17 @@ def _copy(source: Path, destination: Path):
             raise WorkspaceError("Could not finalize a standalone SQLite snapshot.")
 
 
+def _schema_tokens(sql: str) -> tuple[str, ...]:
+    tokens = re.findall(
+        r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|[A-Za-z_][A-Za-z_0-9]*|[0-9]+|[^\s]", sql)
+    return tuple(token if token.startswith(("'", '"')) else token.lower() for token in tokens)
+
+
 def _validate(path: Path) -> dict:
     with closing(_read_only(path)) as connection:
         connection.row_factory = sqlite3.Row
         if [row[0] for row in connection.execute("PRAGMA integrity_check")] != ["ok"]:
             raise WorkspaceError("SQLite integrity validation failed.")
-        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-            raise WorkspaceError("Workspace contains broken database references.")
         tables = {row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'") if not row[0].startswith("sqlite_")}
         required = {entities.name, links.name}
@@ -68,6 +76,14 @@ def _validate(path: Path) -> dict:
                 columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table.name})")}
                 if columns != set(table.c.keys()):
                     raise WorkspaceError("Unsupported workspace columns; use a compatible application version.")
+                declared = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table.name,)).fetchone()[0]
+                expected_schema = str(CreateTable(table).compile(dialect=sqlite_dialect()))
+                # Supported legacy differences are missing indexes/triggers or the whole run table.
+                if _schema_tokens(declared) != _schema_tokens(expected_schema):
+                    raise WorkspaceError("Unsupported workspace table schema; use a compatible application version.")
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise WorkspaceError("Workspace contains broken database references.")
         combined = {}
         counts = {kind: 0 for kind in MODELS}
         fingerprint = sha256()

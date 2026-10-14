@@ -14,13 +14,15 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
+from sqlalchemy.schema import CreateTable
 
 from api.indicators import selected_history
 from api.main import create_app
 from collectors.base import Collected
 from collectors.worldbank import WorldBankCollector, sync_worldbank
 from core.backup import WorkspaceError, backup_workspace, restore_workspace
-from core.store import ROOT, Store, ingestion_runs, links
+from core.store import ROOT, Store, entities, ingestion_runs, links
 from schemas.models import MODELS
 from scripts.seed import seed
 
@@ -246,6 +248,82 @@ class BackupTests(TestCase):
             connection.commit()
         with self.assertRaisesRegex(WorkspaceError, "provenance"):
             restore_workspace(backup, self.root / "restored.db")
+        self.assert_no_staging()
+
+    def schema_fixture(self, path, change_table, transform):
+        with closing(sqlite3.connect(self.path)) as source, closing(sqlite3.connect(path)) as target:
+            for table in (entities, links, ingestion_runs):
+                declaration = str(CreateTable(table).compile(dialect=sqlite_dialect()))
+                if table.name == change_table:
+                    changed = transform(declaration)
+                    self.assertNotEqual(declaration, changed)
+                    declaration = changed
+                target.execute(declaration)
+                rows = source.execute(f"SELECT * FROM {table.name}").fetchall()
+                placeholders = ",".join("?" for _ in table.c)
+                target.executemany(f"INSERT INTO {table.name} VALUES ({placeholders})", rows)
+            target.commit()
+
+    def test_weakened_table_contracts_are_rejected_even_with_valid_records(self):
+        self.populate()
+        counts_check = "CHECK (series_checked >= 0 AND observations_added >= 0 AND snapshots_added >= 0)"
+        status_check = ("CHECK ((status = 'running' AND finished_at IS NULL AND error IS NULL) OR "
+                        "(status = 'succeeded' AND finished_at IS NOT NULL AND error IS NULL) OR "
+                        "(status = 'failed' AND finished_at IS NOT NULL AND error IS NOT NULL))")
+        cases = [
+            ("entities", "PRIMARY KEY (kind, id)", ""),
+            ("entity_references", "PRIMARY KEY (owner_kind, owner_id, target_kind, target_id)", ""),
+            ("ingestion_runs", "PRIMARY KEY (sequence)", ""),
+            ("entities", "payload JSON NOT NULL", "payload JSON"),
+            ("entity_references", "owner_id VARCHAR(200) NOT NULL", "owner_id VARCHAR(200)"),
+            ("ingestion_runs", "status VARCHAR(20) NOT NULL", "status VARCHAR(20)"),
+            ("entity_references", "FOREIGN KEY(owner_kind, owner_id) REFERENCES entities (kind, id)", ""),
+            ("entity_references", "FOREIGN KEY(target_kind, target_id) REFERENCES entities (kind, id)", ""),
+            ("ingestion_runs", "UNIQUE (id)", ""),
+            ("ingestion_runs", counts_check, ""),
+            ("ingestion_runs", status_check, ""),
+            ("ingestion_runs", "series_checked >= 0", "series_checked >= -1"),
+            ("ingestion_runs", "'running'", "'RUNNING'"),
+            ("entities", "payload JSON NOT NULL", "payload TEXT NOT NULL"),
+            ("ingestion_runs", "connector VARCHAR(40) NOT NULL",
+             "connector VARCHAR(40) DEFAULT 'worldbank' NOT NULL"),
+        ]
+        for index, (table, old, new) in enumerate(cases):
+            with self.subTest(table=table, removed=old):
+                source = self.root / f"weakened-{index}.db"
+                destination = self.root / f"restored-{index}.db"
+                def transform(declaration):
+                    if not new:
+                        return declaration.replace(old + ",", "").replace(", \n\t" + old, "")
+                    return declaration.replace(old, new)
+                # Keep all records valid so rejection must be based on schema, not current data.
+                if old == "'running'":
+                    with self.store.engine.begin() as connection:
+                        connection.exec_driver_sql("DELETE FROM ingestion_runs WHERE status='running'")
+                self.schema_fixture(source, table, transform)
+                before = source.read_bytes()
+                for operation in ("backup", "restore"):
+                    with self.subTest(operation=operation), self.assertRaisesRegex(
+                            WorkspaceError, "table schema"):
+                        if operation == "backup":
+                            backup_workspace(destination, "sqlite:///" + str(source))
+                        else:
+                            restore_workspace(source, destination)
+                    self.assertFalse(destination.exists())
+                    self.assertEqual(before, source.read_bytes())
+                    self.assert_no_staging()
+
+    def test_table_schema_whitespace_and_keyword_case_remain_compatible(self):
+        source = self.root / "formatted.db"
+        def format_declaration(declaration):
+            return declaration.replace("CREATE TABLE", "create   table").replace(
+                "PRIMARY KEY", "primary\nkey").replace("NOT NULL", "not\t null")
+        self.schema_fixture(source, "entities", format_declaration)
+        backup = self.root / "formatted-backup.db"
+        restored = self.root / "formatted-restored.db"
+        result = backup_workspace(backup, "sqlite:///" + str(source))
+        self.assertEqual(result["content_sha256"], restore_workspace(source, restored)["content_sha256"])
+        self.assertEqual(self.raw_rows(source), self.raw_rows(restored))
         self.assert_no_staging()
 
     def test_broken_foreign_keys_and_future_canonical_versions_are_rejected(self):

@@ -6,6 +6,9 @@
 - Include committed WAL changes; preserve raw payloads, provenance, and run history.
 - Restore only to new destinations, with atomic non-replacing publication.
 - Validate integrity, schemas, references, run chronology, and retained-content checksums.
+- Reject weakened SQLite table definitions before backup/restore publication, while
+  retaining the explicitly supported legacy table/index/trigger differences.
+- Remove an orphaned duplicate stylesheet block without changing responsive breakpoints.
 - Test additive legacy upgrades without canonical rewrites or invented refresh history.
 - Document PowerShell/POSIX/Docker recovery, rollback, and excluded browser preferences.
 - Ignore the recommended backup directory and sanitize nonzero CLI failure diagnostics.
