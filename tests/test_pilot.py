@@ -1,7 +1,9 @@
 from datetime import date, datetime, timezone
 from hashlib import sha256
+from importlib.metadata import version
 import json
 from pathlib import Path
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -251,6 +253,14 @@ class PilotCase(unittest.TestCase):
             index = Path(__file__).resolve().parents[1] / "frontend" / "index.html"
             if index.is_file():
                 self.assertEqual(200, client.get("/").status_code)
+
+    def test_application_release_version_matches_package(self):
+        root = Path(__file__).resolve().parents[1]
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        app = create_app(self.store)
+        self.assertEqual(project["version"], version("dominograph"))
+        self.assertEqual(project["version"], app.version)
+        self.assertEqual(project["version"], app.openapi()["info"]["version"])
 
     def test_empty_database_startup_does_not_seed(self):
         empty = Store("sqlite:///:memory:")

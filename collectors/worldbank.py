@@ -1,10 +1,13 @@
 """Allowlisted WDI connector. No credentials, arbitrary URLs, or model inference."""
 
 import json
+import logging
 from datetime import date, datetime, timezone
 from hashlib import sha256
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from collectors.base import Collected
 from collectors.fred import NoRedirect
@@ -34,6 +37,7 @@ LIMITATIONS = [
     "WDI may revise history. Stored vintages reflect local downloads, not an original-release archive.",
     "No calibrated confidence or economic risk score is assigned to imported observations.",
 ]
+logger = logging.getLogger(__name__)
 
 
 class WorldBankCollector:
@@ -71,6 +75,8 @@ def normalize(raw, country, indicator, existing=()):
     prior = {o.id: o for o in existing}
     result, years = [], set()
     for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("indicator"), dict):
+            raise ValueError("invalid World Bank observation row")
         if row.get("indicator", {}).get("id") != indicator or row.get("countryiso3code") != ISO3[country]:
             raise ValueError("World Bank series/country mismatch")
         year = int(row["date"])
@@ -105,38 +111,50 @@ def normalize(raw, country, indicator, existing=()):
 def sync_worldbank(store, country="US", collector_factory=WorldBankCollector):
     if country not in COUNTRIES:
         raise ValueError("unsupported country")
-    node = Node(id="macro-" + country, name=COUNTRIES[country] + " economy",
-                domain="macroeconomics", geography=country,
-                description="Annual macroeconomic indicators from World Development Indicators.")
-    pending = [node]
-    existing = [Observation.model_validate(o) for o in store.all("observation")]
-    saved_raw = store.all("rawsnapshot")
-    added = 0
-    for indicator, spec in SERIES.items():
-        collector = collector_factory(country, indicator)
-        source_id = f"source-wb-{country}-{indicator}"
-        source = Source(id=source_id, name=f"World Bank WDI · {COUNTRIES[country]} · {spec['name']}",
-                        publisher="World Bank; " + spec["provider"], url=collector.url,
-                        verification_tier="C", verification_notes="International statistical compilation; tier is not a truth score.",
-                        license="CC-BY-4.0", redistribution_allowed=True,
-                        license_url="https://data.worldbank.org/indicator/" + indicator,
-                        methodology=spec["description"], update_cadence="Annual observations; irregular dataset updates.",
-                        revision_policy="Append local snapshots and retain earlier observations; never overwrite.",
-                        limitations=LIMITATIONS)
-        metric = Metric(id=f"wb-{country}-{indicator}", node_id=node.id, name=spec["name"],
-                        dataset=indicator, unit=spec["unit"], frequency="annual",
-                        description=spec["description"], context="Exploration only; no pressure-scoring rule assigned.")
-        raw = snapshot(collector.collect(), source_id)
-        # Reuse an unchanged latest response; an older matching response after an
-        # intervening revision must become a new vintage (a source can revert).
-        prior_raw = sorted((r for r in saved_raw if r["source_id"] == source_id),
-                           key=lambda r: (r["retrieval_time"], r["id"]))
-        if prior_raw and prior_raw[-1]["content_sha256"] == raw.content_sha256:
-            pending.extend([source, metric])
-            continue
-        observations = normalize(raw, country, indicator, existing)
-        pending.extend([source, metric, raw, *observations])
-        added += len(observations)
-    # A country refresh is atomic: failed collection/validation retains all old data.
-    store.put_many(pending)
-    return {"country": country, "series": len(SERIES), "observations_added": added}
+    run_id = store.start_ingestion_run("worldbank", country, datetime.now(timezone.utc))
+    checked = added = snapshots_added = 0
+    try:
+        node = Node(id="macro-" + country, name=COUNTRIES[country] + " economy",
+                    domain="macroeconomics", geography=country,
+                    description="Annual macroeconomic indicators from World Development Indicators.")
+        pending = [node]
+        existing = [Observation.model_validate(o) for o in store.all("observation")]
+        saved_raw = store.all("rawsnapshot")
+        for indicator, spec in SERIES.items():
+            collector = collector_factory(country, indicator)
+            source_id = f"source-wb-{country}-{indicator}"
+            source = Source(id=source_id, name=f"World Bank WDI · {COUNTRIES[country]} · {spec['name']}",
+                            publisher="World Bank; " + spec["provider"], url=collector.url,
+                            verification_tier="C", verification_notes="International statistical compilation; tier is not a truth score.",
+                            license="CC-BY-4.0", redistribution_allowed=True,
+                            license_url="https://data.worldbank.org/indicator/" + indicator,
+                            methodology=spec["description"], update_cadence="Annual observations; irregular dataset updates.",
+                            revision_policy="Append local snapshots and retain earlier observations; never overwrite.",
+                            limitations=LIMITATIONS)
+            metric = Metric(id=f"wb-{country}-{indicator}", node_id=node.id, name=spec["name"],
+                            dataset=indicator, unit=spec["unit"], frequency="annual",
+                            description=spec["description"], context="Exploration only; no pressure-scoring rule assigned.")
+            raw = snapshot(collector.collect(), source_id)
+            # An unchanged latest response is not a new vintage; a reversion is.
+            prior_raw = sorted((r for r in saved_raw if r["source_id"] == source_id),
+                               key=lambda r: (r["retrieval_time"], r["id"]))
+            if prior_raw and prior_raw[-1]["content_sha256"] == raw.content_sha256:
+                pending.extend([source, metric])
+            else:
+                observations = normalize(raw, country, indicator, existing)
+                pending.extend([source, metric, raw, *observations])
+                added += len(observations)
+                snapshots_added += 1
+            checked += 1
+        # Accepted data and the successful run outcome commit together.
+        store.complete_ingestion_run(run_id, pending, datetime.now(timezone.utc),
+                                     checked, added, snapshots_added)
+    except (ValueError, KeyError, TypeError, OverflowError, SQLAlchemyError) as exc:
+        error = ("Could not save imported data. Saved observations are unchanged."
+                 if isinstance(exc, SQLAlchemyError) else
+                 "Source download or validation failed. Saved observations are unchanged.")
+        store.fail_ingestion_run(run_id, datetime.now(timezone.utc), checked, error)
+        logger.warning("World Bank refresh %s for %s failed (%s)", run_id, country, type(exc).__name__)
+        raise
+    return {"country": country, "series": checked, "observations_added": added,
+            "snapshots_added": snapshots_added, "run_id": run_id}

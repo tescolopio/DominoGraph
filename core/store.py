@@ -1,17 +1,31 @@
-"""Relational canonical payloads and FK lineage; all writes are append-only."""
+"""Append-only canonical records and transactionally completed ingestion runs."""
 
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from sqlalchemy import (JSON, Column, ForeignKeyConstraint, Index, MetaData, String, Table,
-                        create_engine, event, insert, select)
-from sqlalchemy.engine import make_url
+from sqlalchemy import (JSON, CheckConstraint, Column, ForeignKeyConstraint, Index,
+                        Integer, MetaData, String, Table, create_engine, event, insert,
+                        select, update)
+from sqlalchemy.engine import Connection
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.pool import StaticPool
 
 from schemas.models import MODELS, Canonical
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def resolve_database_url(database_url: str | None = None) -> URL:
+    url = make_url(database_url or os.environ.get("DATABASE_URL", "sqlite:///data/dominograph.db"))
+    if url.drivername == "postgresql":
+        url = url.set(drivername="postgresql+psycopg")
+    if url.get_backend_name() == "sqlite" and url.database and url.database != ":memory:":
+        path = Path(url.database)
+        path = path if path.is_absolute() else ROOT / path
+        url = url.set(database=str(path.resolve()))
+    return url
 
 
 def instant(value):
@@ -35,6 +49,28 @@ links = Table("entity_references", metadata,
 _supersession = (links.c.owner_kind == "relationship") & (links.c.target_kind == "relationship")
 Index("one_relationship_successor", links.c.target_kind, links.c.target_id,
       unique=True, sqlite_where=_supersession, postgresql_where=_supersession)
+
+ingestion_runs = Table(
+    "ingestion_runs", metadata,
+    Column("sequence", Integer, primary_key=True, autoincrement=True),
+    Column("id", String(200), nullable=False, unique=True),
+    Column("connector", String(40), nullable=False),
+    Column("country", String(2), nullable=False),
+    Column("started_at", String(40), nullable=False),
+    Column("finished_at", String(40)),
+    Column("status", String(20), nullable=False),
+    Column("series_checked", Integer, nullable=False),
+    Column("observations_added", Integer, nullable=False),
+    Column("snapshots_added", Integer, nullable=False),
+    Column("error", String(200)),
+    CheckConstraint("series_checked >= 0 AND observations_added >= 0 AND snapshots_added >= 0"),
+    CheckConstraint(
+        "(status = 'running' AND finished_at IS NULL AND error IS NULL) OR "
+        "(status = 'succeeded' AND finished_at IS NOT NULL AND error IS NULL) OR "
+        "(status = 'failed' AND finished_at IS NOT NULL AND error IS NOT NULL)"),
+)
+Index("ingestion_runs_by_country", ingestion_runs.c.connector, ingestion_runs.c.country,
+      ingestion_runs.c.started_at, ingestion_runs.c.sequence)
 
 REFERENCE_FIELDS = {
     "metric": {"node_id": "node"},
@@ -74,19 +110,14 @@ def references(kind, payload):
 
 class Store:
     def __init__(self, database_url=None):
-        url = make_url(database_url or os.environ.get("DATABASE_URL", "sqlite:///data/dominograph.db"))
-        if url.drivername == "postgresql":
-            url = url.set(drivername="postgresql+psycopg")
+        url = resolve_database_url(database_url)
         options = {}
         if url.get_backend_name() == "sqlite":
             options["connect_args"] = {"check_same_thread": False}
             if not url.database or url.database == ":memory:":
                 options["poolclass"] = StaticPool
             else:
-                path = Path(url.database)
-                path = path if path.is_absolute() else ROOT / path
-                path.parent.mkdir(parents=True, exist_ok=True)
-                url = url.set(database=str(path.resolve()))
+                Path(url.database).parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(url, **options)
         if url.get_backend_name() == "sqlite":
             @event.listens_for(self.engine, "connect")
@@ -136,7 +167,69 @@ class Store:
         superseded = {r.get("supersedes") for r in records if r.get("supersedes")}
         return [r for r in records if r["id"] not in superseded]
 
+    def start_ingestion_run(self, connector: str, country: str, started_at: datetime) -> str:
+        if started_at.tzinfo is None:
+            raise ValueError("ingestion start time must be timezone aware")
+        identity = "run-" + uuid4().hex
+        with self.engine.begin() as connection:
+            connection.execute(insert(ingestion_runs).values(
+                id=identity, connector=connector, country=country,
+                started_at=started_at.astimezone(timezone.utc).isoformat(),
+                status="running", series_checked=0, observations_added=0, snapshots_added=0))
+        return identity
+
+    def list_ingestion_runs(self, connector: str, country: str | None = None,
+                            *, limit: int = 20, offset: int = 0, successful_only: bool = False):
+        query = select(ingestion_runs).where(ingestion_runs.c.connector == connector)
+        if country is not None:
+            query = query.where(ingestion_runs.c.country == country)
+        if successful_only:
+            query = query.where(ingestion_runs.c.status == "succeeded")
+            ordering = ingestion_runs.c.finished_at
+        else:
+            ordering = ingestion_runs.c.started_at
+        query = query.order_by(ordering.desc(), ingestion_runs.c.sequence.desc()).limit(limit).offset(offset)
+        with self.engine.connect() as connection:
+            return [{key: value for key, value in row._mapping.items() if key != "sequence"}
+                    for row in connection.execute(query)]
+
+    def complete_ingestion_run(self, identity: str, objects: list[Canonical], finished_at: datetime,
+                               series_checked: int, observations_added: int, snapshots_added: int):
+        with self.engine.begin() as connection:
+            self._put_many(connection, objects)
+            self._finish_ingestion_run(connection, identity, finished_at, "succeeded",
+                                       series_checked, observations_added, snapshots_added, None)
+
+    def fail_ingestion_run(self, identity: str, finished_at: datetime, series_checked: int, error: str):
+        with self.engine.begin() as connection:
+            self._finish_ingestion_run(connection, identity, finished_at, "failed",
+                                       series_checked, 0, 0, error)
+
+    @staticmethod
+    def _finish_ingestion_run(connection: Connection, identity: str, finished_at: datetime,
+                              status: str, series_checked: int, observations_added: int,
+                              snapshots_added: int, error: str | None):
+        if finished_at.tzinfo is None:
+            raise ValueError("ingestion finish time must be timezone aware")
+        started = connection.execute(select(ingestion_runs.c.started_at).where(
+            ingestion_runs.c.id == identity, ingestion_runs.c.status == "running")).scalar_one_or_none()
+        if started is None:
+            raise ValueError("ingestion run is unknown or already finished")
+        if finished_at.astimezone(timezone.utc) < instant(started):
+            raise ValueError("ingestion finish time precedes its start")
+        result = connection.execute(update(ingestion_runs).where(
+            ingestion_runs.c.id == identity, ingestion_runs.c.status == "running").values(
+                finished_at=finished_at.astimezone(timezone.utc).isoformat(), status=status,
+                series_checked=series_checked, observations_added=observations_added,
+                snapshots_added=snapshots_added, error=error))
+        if result.rowcount != 1:
+            raise ValueError("ingestion run was finished by another writer")
+
     def put_many(self, objects: list[Canonical]):
+        with self.engine.begin() as connection:
+            self._put_many(connection, objects)
+
+    def _put_many(self, connection: Connection, objects: list[Canonical]):
         pending = {}
         for obj in objects:
             kind = obj.__class__.__name__.lower()
@@ -147,24 +240,23 @@ class Store:
             if key in pending and pending[key] != payload:
                 raise ValueError(f"conflicting immutable ID: {key}")
             pending[key] = payload
-        with self.engine.begin() as connection:
-            existing = {(row.kind, row.id): row.payload for row in connection.execute(select(entities))}
-            combined = existing | pending
-            for key, payload in pending.items():
-                if key in existing and MODELS[key[0]].model_validate(existing[key]).model_dump(mode="json") != payload:
-                    raise ValueError(f"immutable ID already exists: {key}")
-                for target in references(key[0], payload):
-                    if target not in combined:
-                        raise ValueError(f"missing reference {target} for {key}")
-                self._validate_semantics(key[0], payload, combined)
-            for (kind, identity), payload in pending.items():
-                if (kind, identity) not in existing:
-                    connection.execute(insert(entities).values(kind=kind, id=identity, payload=payload))
-            for (kind, identity), payload in pending.items():
-                if (kind, identity) not in existing:
-                    for target_kind, target_id in sorted(references(kind, payload)):
-                        connection.execute(insert(links).values(owner_kind=kind, owner_id=identity,
-                                                               target_kind=target_kind, target_id=target_id))
+        existing = {(row.kind, row.id): row.payload for row in connection.execute(select(entities))}
+        combined = existing | pending
+        for key, payload in pending.items():
+            if key in existing and MODELS[key[0]].model_validate(existing[key]).model_dump(mode="json") != payload:
+                raise ValueError(f"immutable ID already exists: {key}")
+            for target in references(key[0], payload):
+                if target not in combined:
+                    raise ValueError(f"missing reference {target} for {key}")
+            self._validate_semantics(key[0], payload, combined)
+        for (kind, identity), payload in pending.items():
+            if (kind, identity) not in existing:
+                connection.execute(insert(entities).values(kind=kind, id=identity, payload=payload))
+        for (kind, identity), payload in pending.items():
+            if (kind, identity) not in existing:
+                for target_kind, target_id in sorted(references(kind, payload)):
+                    connection.execute(insert(links).values(owner_kind=kind, owner_id=identity,
+                                                           target_kind=target_kind, target_id=target_id))
 
     @staticmethod
     def _validate_semantics(kind, payload, combined):

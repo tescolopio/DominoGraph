@@ -27,6 +27,13 @@
         <div class="library-foot"><span class="dot"></span>Persistent local storage<br><span class="muted">New sources can join this library.</span></div>
       </aside>
       <div class="content">
+        <section class="refresh-panel" aria-labelledby="check-heading">
+          <h3 id="check-heading">Current workspace source checks</h3>
+          <p id="check-status" class="check-status" role="status" aria-live="polite">Loading check history...</p>
+          <div id="check-facts" class="source-facts"></div>
+          <p class="small muted">A check is stale after 7 days without a successful refresh. Refreshes are manual; this is not the age of the annual data. Check history is current, even in a historical chart view.</p>
+          <details id="refresh-history"><summary>Recent refresh attempts for this economy</summary><ol id="refresh-runs" class="run-list"></ol></details>
+        </section>
         <section id="empty" class="empty" hidden><span class="empty-icon">↗</span><h2>Start with an economy</h2><p>Choose an economy, then refresh to download GDP growth, inflation, and unemployment.</p><p class="muted">No account or API key required. Your data stays in this workspace.</p></section>
         <section id="detail" hidden>
           <div class="detail-heading"><div><p id="series-label" class="eyebrow"></p><h2 id="series-title"></h2></div><button id="save" type="button" aria-pressed="false">☆ Save indicator</button></div>
