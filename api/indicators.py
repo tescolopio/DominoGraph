@@ -1,15 +1,34 @@
 """Read-only indicator views plus explicit, same-origin local refresh."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from threading import Lock
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import SQLAlchemyError
 
-from collectors.worldbank import COUNTRIES, sync_worldbank
+from collectors.worldbank import COUNTRIES, SERIES, sync_worldbank
+from core.store import instant
 
 router = APIRouter(prefix="/api")
 refresh_lock = Lock()
+Country = Literal["US", "CA", "GB", "DE", "JP"]
+CHECK_INTERVAL_DAYS = 7
+
+
+def worldbank_refresh_status(store, country: str, snapshots: list[dict], now: datetime):
+    runs = store.list_ingestion_runs("worldbank", country, limit=10)
+    successful = store.list_ingestion_runs("worldbank", country, limit=1, successful_only=True)
+    checked_at = successful[0]["finished_at"] if successful else None
+    due = instant(checked_at) + timedelta(days=CHECK_INTERVAL_DAYS) if checked_at else None
+    source_ids = {f"source-wb-{country}-{indicator}" for indicator in SERIES}
+    changed_at = max((s["retrieval_time"] for s in snapshots if s["source_id"] in source_ids),
+                     key=instant, default=None)
+    return {"country": country,
+            "check_status": "never_checked" if due is None else "stale" if now >= due else "fresh",
+            "check_interval_days": CHECK_INTERVAL_DAYS, "last_checked_at": checked_at,
+            "next_check_due_at": due.isoformat() if due else None, "last_changed_at": changed_at,
+            "latest_run": runs[0] if runs else None, "recent_runs": runs}
 
 
 def selected_history(store, metric_id, as_of=None):
@@ -51,7 +70,11 @@ def indicators(request: Request):
         result.append({"metric": metric, "geography": nodes[metric["node_id"]]["geography"],
                        "latest": last, "previous": previous, "count": len(points),
                        "retrieved_at": max((s["retrieval_time"] for s in snapshots), default=None)})
-    return {"indicators": result, "countries": COUNTRIES}
+    snapshots = store.all("rawsnapshot")
+    now = datetime.now(timezone.utc)
+    return {"indicators": result, "countries": COUNTRIES,
+            "refreshes": {country: worldbank_refresh_status(store, country, snapshots, now)
+                          for country in COUNTRIES}}
 
 
 @router.get("/indicators/{metric_id}")
@@ -60,16 +83,27 @@ def indicator(metric_id: str, request: Request, as_of: date | None = None):
     metric = store.get("metric", metric_id)
     points, snapshots, records = selected_history(store, metric_id, as_of)
     sources = [store.get("source", identity) for identity in sorted({o["source_id"] for o in records})]
-    return {"metric": metric, "node": store.get("node", metric["node_id"]), "points": points,
+    node = store.get("node", metric["node_id"])
+    country = node["geography"]
+    refresh_status = (worldbank_refresh_status(store, country, store.all("rawsnapshot"), datetime.now(timezone.utc))
+                      if country in COUNTRIES and metric_id == f"wb-{country}-{metric['dataset']}" else None)
+    return {"metric": metric, "node": node, "points": points,
             "sources": sources, "as_of": as_of,
             "snapshots": [{k: s[k] for k in ("id", "source_id", "retrieval_time", "content_sha256", "collector_version")}
                           for s in snapshots],
-            "retained_observations": len(records)}
+            "retained_observations": len(records), "refresh": refresh_status}
+
+
+@router.get("/connectors/worldbank/runs")
+def runs(request: Request, country: Country | None = None,
+         limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0)):
+    records = request.app.state.store.list_ingestion_runs("worldbank", country, limit=limit + 1, offset=offset)
+    return {"runs": records[:limit], "limit": limit, "offset": offset, "has_more": len(records) > limit}
 
 
 class RefreshRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    country: Literal["US", "CA", "GB", "DE", "JP"] = "US"
+    country: Country = "US"
 
 
 @router.post("/connectors/worldbank/refresh")
@@ -82,7 +116,7 @@ def refresh(body: RefreshRequest, request: Request):
         raise HTTPException(409, "A refresh is already running; try again shortly")
     try:
         return sync_worldbank(request.app.state.store, body.country)
-    except (ValueError, KeyError, TypeError, OverflowError) as exc:
+    except (ValueError, KeyError, TypeError, OverflowError, SQLAlchemyError) as exc:
         raise HTTPException(502, "Refresh failed. Previously saved data is unchanged. Try again later.") from exc
     finally:
         refresh_lock.release()

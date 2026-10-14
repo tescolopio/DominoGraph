@@ -2,8 +2,9 @@
 const $ = id => document.getElementById(id);
 const number = v => new Intl.NumberFormat(undefined, {maximumFractionDigits: 2, minimumFractionDigits: 2}).format(v);
 const dateText = v => v ? new Date(v).toLocaleDateString(undefined, {year: "numeric", month: "short", day: "numeric"}) : "Not available";
+const dateTimeText = v => v ? new Date(v).toLocaleString(undefined, {year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short"}) : "Not recorded";
 const node = (tag, text, cls) => {const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n;};
-let catalog = [], selected = "", detail = null, years = 25, selection = 0, saved = new Set();
+let catalog = [], refreshes = {}, selected = "", detail = null, years = 25, selection = 0, saved = new Set();
 try { saved = new Set(JSON.parse(localStorage.getItem("dominograph-saved") || "[]")); } catch {}
 function status(text, error = false) { $("status").textContent = text; $("status").classList.toggle("error", error); }
 async function request(path, options) {
@@ -30,15 +31,45 @@ function renderList() {
   }
   if (!filtered.length) $("indicator-list").append(node("p", available.length ? "No matching indicators." : "No saved data for this economy yet.", "small muted"));
 }
+function renderRefresh() {
+  const check = refreshes[$("country").value];
+  if (!check) throw new Error("Source check status is unavailable. Reload the application.");
+  $("check-heading").textContent = "Current workspace source checks / " + $("country").selectedOptions[0].textContent;
+  const labels = {fresh: "Source check is fresh.", stale: "Source check is stale; refresh to check for updates.", never_checked: "No successful source check is recorded; refresh to start check history."};
+  let text = labels[check.check_status];
+  if (!text) throw new Error("Unknown source check status. Reload the application.");
+  if (check.latest_run?.status === "failed") text += " Latest refresh failed. " + check.latest_run.error;
+  if (check.latest_run?.status === "running") text += " Latest refresh has no recorded completion; it may be running or interrupted.";
+  $("check-status").textContent = text;
+  $("check-status").classList.toggle("error", check.check_status === "stale" || check.latest_run?.status === "failed");
+  $("check-facts").replaceChildren();
+  for (const [label, value] of [["Last successful check", check.last_checked_at], ["Last changed snapshot", check.last_changed_at], ["Next check due", check.next_check_due_at]]) {
+    const fact = node("div", label); fact.append(node("strong", dateTimeText(value))); $("check-facts").append(fact);
+  }
+  $("refresh-runs").replaceChildren();
+  for (const run of check.recent_runs) {
+    const item = node("li"), title = node("strong", run.status + " · Started " + dateTimeText(run.started_at));
+    item.append(title);
+    if (run.finished_at) item.append(node("p", "Finished " + dateTimeText(run.finished_at) + " · " + run.series_checked + " series checked · " + run.observations_added + " observations added · " + run.snapshots_added + " changed snapshots"));
+    else item.append(node("p", "Completion not recorded; this attempt may be running or interrupted."));
+    if (run.error) item.append(node("p", run.error, "error"));
+    $("refresh-runs").append(item);
+  }
+  if (!check.recent_runs.length) $("refresh-runs").append(node("li", "No recorded refresh attempts. Existing downloads do not establish a successful check history."));
+}
 async function loadCatalog(preferred = selected) {
-  const data = await request("/api/indicators"); catalog = data.indicators;
+  const data = await request("/api/indicators"); catalog = data.indicators; refreshes = data.refreshes;
   const country = $("country").value; $("country").replaceChildren();
   for (const [id, label] of Object.entries(data.countries)) { const option = node("option", label); option.value = id; $("country").append(option); }
   $("country").value = country || "US";
+  renderRefresh();
   const candidates = catalog.filter(r => r.geography === $("country").value);
   const next = candidates.find(r => r.metric.id === preferred) || candidates[0];
   if (next) await select(next.metric.id);
-  else { selection++; selected = ""; detail = null; $("detail").hidden = true; $("empty").hidden = false; renderList(); }
+  else {
+    selection++; selected = ""; detail = null; $("detail").hidden = true; $("empty").hidden = false; renderList();
+    status("No retained indicators for " + $("country").selectedOptions[0].textContent + ". Refresh to check this economy.");
+  }
 }
 async function select(id) {
   selected = id; const version = ++selection; renderList();
@@ -123,5 +154,17 @@ $("save").addEventListener("click",()=>{if(!selected)return;saved.has(selected)?
 $("ranges").addEventListener("click",e=>{if(e.target.dataset.years!==undefined){years=Number(e.target.dataset.years);drawChart();}});
 $("as-of").addEventListener("change",()=>{if(selected)select(selected);});$("latest-view").addEventListener("click",()=>{$("as-of").value="";if(selected)select(selected);});
 $("close-evidence").addEventListener("click",()=>$("evidence-dialog").close());
-$("refresh").addEventListener("click",async()=>{const button=$("refresh"),country=$("country").value;button.disabled=true;button.textContent="Refreshing…";status("Downloading three annual series. Existing history will be preserved…");try{const result=await request("/api/connectors/worldbank/refresh",{method:"POST",headers:{"Content-Type":"application/json","X-DominoGraph-Request":"1"},body:JSON.stringify({country})});await loadCatalog();status(country+": "+result.series+" series checked · "+result.observations_added+" observations added. Existing vintages retained.");}catch(error){status(error.message,true);}finally{button.disabled=false;button.textContent="↻ Refresh this economy";}});
+$("refresh").addEventListener("click",async()=>{
+  const button=$("refresh"),country=$("country").value;button.disabled=true;button.textContent="Refreshing…";
+  status("Downloading three annual series. Existing history will be preserved…");
+  try {
+    const result=await request("/api/connectors/worldbank/refresh",{method:"POST",headers:{"Content-Type":"application/json","X-DominoGraph-Request":"1"},body:JSON.stringify({country})});
+    await loadCatalog();
+    status(country+": "+result.series+" series checked · "+result.observations_added+" observations added. Existing vintages retained.");
+  } catch(error) {
+    let message=error.message;
+    try {await loadCatalog();} catch(historyError) {message+=" Check history could not be reloaded: "+historyError.message;}
+    status(message,true);
+  } finally {button.disabled=false;button.textContent="↻ Refresh this economy";}
+});
 loadCatalog().then(()=>{if(!selected)status("Choose an economy and refresh to add your first indicators.");}).catch(error=>status(error.message,true));
